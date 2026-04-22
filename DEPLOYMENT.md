@@ -64,3 +64,4 @@ The frontend defaults to `http://127.0.0.1:8000` when `BACKEND_API_URL` is not s
 - Render free services can sleep when idle, so the first frontend request may be slow.
 - The Streamlit app calls the backend server-side with Python `requests`, so browser CORS is not needed for the current frontend flow.
 - Keep all real credentials in Render environment variables or Streamlit secrets.
+- If Render logs show `Using Python version 3.14.3 (default)` and `pydantic-core` fails to build, the Python pin was not applied. Confirm `.python-version` is pushed to GitHub or set `PYTHON_VERSION=3.11.11` in the Render service environment variables, then clear the build cache and redeploy.
