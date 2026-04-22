@@ -15,14 +15,12 @@ This folder contains an end-to-end AI data modeling workflow built for FastAPI S
 
 Use Swagger at `http://127.0.0.1:8000/docs` and call:
 
-1. `POST /conceptual` with the business requirement
-2. Review the returned conceptual JSON and Mermaid text
-3. Open `GET /conceptual/view?requirement=...` to visualize the ER diagram
-4. Use the buttons on that page to download:
-   conceptual JSON
-   Mermaid `.mmd`
-5. Pass `conceptual_model` from `/conceptual` into `POST /logical`
-6. Optionally call `POST /physical`
+1. `POST /orchestrate` with the business requirement
+2. Review the returned conceptual JSON, Mermaid text, and artifact links
+3. Open `conceptual_view_url` to visualize the ER diagram
+4. Use the returned download links for JSON and Mermaid artifacts
+5. Send an approval request to `POST /orchestrate` with the same `artifact_id`
+   to generate logical and physical outputs
 
 ## Run
 
@@ -31,7 +29,13 @@ pip install -r requirements.txt
 uvicorn api:app --reload
 ```
 
-Create a local `.env` file in `Data_Modeling/`:
+## Deployment
+
+Use `render.yaml` to deploy the FastAPI backend on Render, then deploy
+`streamlit_app.py` on Streamlit Community Cloud with `BACKEND_API_URL` set to
+the Render service URL. See `DEPLOYMENT.md` for the full checklist.
+
+Create a local `.env` file in the repository root:
 
 ```bash
 cp .env.example .env
@@ -41,26 +45,24 @@ Then set:
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-pro
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
-This repo now also includes a local `.env` file stub. Replace `your_gemini_api_key_here`
-with the actual key before running against Gemini.
+Never commit `.env`; it is ignored by `.gitignore`.
 
 ## Example Swagger request
 
 ```json
 {
   "requirement": "Design a retail banking data model where a customer can hold multiple accounts and each account can have many transactions.",
-  "requested_stage": "conceptual",
-  "approved_conceptual": null
+  "artifact_id": null
 }
 ```
 
 ## Gemini setup
 
 - Store `GEMINI_API_KEY` in `.env`
-- Optional: set `GEMINI_MODEL` if you want a model other than the default `gemini-2.5-pro`
+- Optional: set `GEMINI_MODEL` if you want a model other than the configured default
 
 ## Notes
 

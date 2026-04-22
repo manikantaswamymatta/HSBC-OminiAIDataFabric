@@ -1,6 +1,7 @@
 import base64
 import json
 import html
+import os
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -11,7 +12,16 @@ import zipfile
 import requests
 import streamlit as st
 
-API = "http://127.0.0.1:8000"
+
+def get_backend_api_url() -> str:
+    backend_url = os.getenv("BACKEND_API_URL", "").strip()
+    if not backend_url:
+        try:
+            backend_url = str(st.secrets.get("BACKEND_API_URL", "")).strip()
+        except Exception:
+            backend_url = ""
+    return (backend_url or "http://127.0.0.1:8000").rstrip("/")
+
 LOGO_PATH = Path(__file__).with_name("kpmg-logo-png_seeklogo-290229.png")
 EXAMPLE_IMAGE_PATH = Path(__file__).with_name("example.jpeg")
 PROJECT_REPOSITORY_PATH = Path(__file__).with_name("project_repository")
@@ -50,8 +60,6 @@ TECH_USED = [
     "Gemini",
     "LangGraph",
     "LangChain",
-    "FAISS",
-    "Sentence Transformers",
     "Mermaid.js",
 ]
 DATA_PRODUCTS = [
@@ -64,6 +72,8 @@ DATA_PRODUCTS = [
 ]
 
 st.set_page_config(page_title="OmniModel.AI", layout="wide")
+
+API = get_backend_api_url()
 
 def render_app_logo() -> None:
     if not LOGO_PATH.exists():
@@ -1438,8 +1448,8 @@ def api_post(payload: dict, action_label: str) -> requests.Response:
                 timeout=300,
             )
     except requests.exceptions.ConnectionError:
-        st.error("FastAPI backend not running.")
-        st.info("Run: uvicorn api:app --reload")
+        st.error(f"FastAPI backend is not reachable at {API}.")
+        st.info("For local work, run: uvicorn api:app --reload. For Streamlit Cloud, set BACKEND_API_URL to your Render service URL.")
         st.stop()
     except Exception as exc:  # pragma: no cover - UI-only safeguard
         st.error(str(exc))

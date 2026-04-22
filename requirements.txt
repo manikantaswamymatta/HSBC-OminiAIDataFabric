@@ -6,4 +6,5 @@ langchain-core==0.3.59
 langchain-google-genai==2.1.4
 langgraph==0.4.1
 numpy==1.26.4
+requests==2.33.1
 streamlit==1.33.0
