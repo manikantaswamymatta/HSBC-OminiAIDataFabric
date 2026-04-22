@@ -12,6 +12,8 @@ import zipfile
 import requests
 import streamlit as st
 
+DEFAULT_BACKEND_API_URL = "https://hsbc-ominiaidatafabric.onrender.com"
+
 
 def get_backend_api_url() -> str:
     backend_url = os.getenv("BACKEND_API_URL", "").strip()
@@ -20,7 +22,7 @@ def get_backend_api_url() -> str:
             backend_url = str(st.secrets.get("BACKEND_API_URL", "")).strip()
         except Exception:
             backend_url = ""
-    return (backend_url or "http://127.0.0.1:8000").rstrip("/")
+    return (backend_url or DEFAULT_BACKEND_API_URL).rstrip("/")
 
 LOGO_PATH = Path(__file__).with_name("kpmg-logo-png_seeklogo-290229.png")
 EXAMPLE_IMAGE_PATH = Path(__file__).with_name("example.jpeg")
