@@ -594,9 +594,47 @@ def _map_column_data_type(
     return "VARCHAR(255)"
 
 
+def _canonical_table_name(table_name: str) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9_]+", "_", table_name.strip())
+    normalized = re.sub(r"_+", "_", normalized).strip("_").upper()
+    while re.match(r"^(DIM|FACT|FCT)_", normalized):
+        normalized = re.sub(r"^(DIM|FACT|FCT)_+", "", normalized, count=1)
+    while re.search(r"_(DIM|FACT|FCT)$", normalized):
+        normalized = re.sub(r"_(DIM|FACT|FCT)$", "", normalized)
+    return normalized or table_name.strip().upper()
+
+
+def _table_name_map(tables: List[Dict[str, Any]]) -> Dict[str, str]:
+    return {
+        table.get("table_name", ""): _canonical_table_name(table.get("table_name", ""))
+        for table in tables
+        if table.get("table_name")
+    }
+
+
+def _normalize_physical_index(index: Dict[str, Any], table_name_map: Dict[str, str]) -> Dict[str, Any]:
+    canonical_table = table_name_map.get(
+        index.get("table_name", ""),
+        _canonical_table_name(index.get("table_name", "")),
+    )
+    normalized_columns = [
+        _canonical_table_name(column)
+        for column in index.get("columns", [])
+        if column
+    ]
+    index_suffix = "_".join(normalized_columns)
+    normalized_index_name = f"IDX_{canonical_table}_{index_suffix}" if index_suffix else f"IDX_{canonical_table}"
+    return {
+        **index,
+        "index_name": normalized_index_name,
+        "table_name": canonical_table,
+    }
+
+
 #editd by mani
 def _normalize_logical_identifier_types(logical_output: Dict[str, Any]) -> Dict[str, Any]:
     normalized_tables = []
+    table_name_map = _table_name_map(logical_output.get("tables", []))
 
     for table in logical_output.get("tables", []):
         primary_keys = set(table.get("primary_key", []))
@@ -615,6 +653,20 @@ def _normalize_logical_identifier_types(logical_output: Dict[str, Any]) -> Dict[
             normalized_columns.append(normalized_column)
 
         normalized_table = dict(table)
+        normalized_table["table_name"] = table_name_map.get(
+            table.get("table_name", ""),
+            _canonical_table_name(table.get("table_name", "")),
+        )
+        normalized_table["foreign_keys"] = [
+            {
+                **foreign_key,
+                "references_table": table_name_map.get(
+                    foreign_key.get("references_table", ""),
+                    _canonical_table_name(foreign_key.get("references_table", "")),
+                ),
+            }
+            for foreign_key in table.get("foreign_keys", [])
+        ]
         normalized_table["columns"] = normalized_columns
         normalized_tables.append(normalized_table)
 
@@ -657,6 +709,7 @@ def _rebuild_physical_ddl(physical_output: Dict[str, Any]) -> List[str]:
 #editd by mani
 def _normalize_physical_identifier_types(physical_output: Dict[str, Any]) -> Dict[str, Any]:
     normalized_tables = []
+    table_name_map = _table_name_map(physical_output.get("tables", []))
 
     for table in physical_output.get("tables", []):
         primary_keys = set(table.get("primary_key", []))
@@ -675,11 +728,33 @@ def _normalize_physical_identifier_types(physical_output: Dict[str, Any]) -> Dic
             normalized_columns.append(normalized_column)
 
         normalized_table = dict(table)
+        normalized_table["table_name"] = table_name_map.get(
+            table.get("table_name", ""),
+            _canonical_table_name(table.get("table_name", "")),
+        )
+        normalized_table["foreign_keys"] = [
+            {
+                **foreign_key,
+                "references_table": table_name_map.get(
+                    foreign_key.get("references_table", ""),
+                    _canonical_table_name(foreign_key.get("references_table", "")),
+                ),
+            }
+            for foreign_key in table.get("foreign_keys", [])
+        ]
+        normalized_table["indexes"] = [
+            _normalize_physical_index(index, table_name_map)
+            for index in table.get("indexes", [])
+        ]
         normalized_table["columns"] = normalized_columns
         normalized_tables.append(normalized_table)
 
     normalized_output = dict(physical_output)
     normalized_output["tables"] = normalized_tables
+    normalized_output["indexes"] = [
+        _normalize_physical_index(index, table_name_map)
+        for index in physical_output.get("indexes", [])
+    ]
     normalized_output["ddl"] = _rebuild_physical_ddl(normalized_output)
     return normalized_output
 
@@ -920,6 +995,7 @@ def logical_model_core(conceptual_payload: Dict[str, Any]) -> Dict[str, Any]:
 
 #added by swamy
 def physical_model_core(logical_payload: Dict[str, Any]) -> Dict[str, Any]:
+    logical_payload = _normalize_logical_identifier_types(logical_payload)
     prompt = get_physical_prompt(logical_payload)
     try:
         physical = PhysicalModel.model_validate(

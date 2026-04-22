@@ -189,6 +189,9 @@ Rules:
 - Use ONLY the provided conceptual model.
 - Stay at the logical level: no physical DDL, storage, indexing, or performance tuning.
 - Convert entities into tables and preserve all conceptual relationships.
+- Table names must be the canonical entity name only, in uppercase snake case.
+- Do NOT add dimensional-modeling role prefixes or suffixes such as DIM_, FACT_, FCT_, _DIM, or _FACT.
+- For example, use CUSTOMER_CONTACT and ACCOUNT_BALANCE, never DIM_CUSTOMER_CONTACT or FACT_ACCOUNT_BALANCE.
 - Add business-relevant columns, primary keys, and foreign keys.
 - Resolve every M:N relationship with an associative table.
 - Use generic types only: string, number, date, datetime, boolean.
@@ -247,6 +250,8 @@ Return ONLY valid JSON for a physical model.
 Rules:
 - Use ONLY the provided logical model.
 - Do NOT invent, remove, or rename approved tables or relationships.
+- Preserve table names exactly as table names, without adding DIM_, FACT_, FCT_, _DIM, or _FACT.
+- Physical table names and DDL CREATE TABLE names must remain CUSTOMER_CONTACT, ACCOUNT_BALANCE, etc., not DIM_CUSTOMER_CONTACT or FACT_ACCOUNT_BALANCE.
 - Do NOT add database connection, execution, or engine-specific behavior.
 - Map generic logical types to generic physical types.
 - Preserve PK/FK constraints and add indexes mainly for foreign keys and joins.
