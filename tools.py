@@ -16,23 +16,23 @@ except ImportError:
 
 try:
     from config import get_gemini_api_key, get_gemini_model
+    from core_banking_glossary_knowledge_base import CORE_BANKING_GLOSSARY_KNOWLEDGE_BASE
     from prompts import (
         get_conceptual_prompt,
         get_conceptual_update_prompt,
         get_logical_prompt,
         get_physical_prompt,
     )
-    from rag import get_relevant_context
     from schemas import ConceptualModel, ConceptualUpdatePatch, LogicalModel, PhysicalModel, PhysicalModelTemplate  #added by swamy
 except ImportError:  # pragma: no cover
     from .config import get_gemini_api_key, get_gemini_model
+    from .core_banking_glossary_knowledge_base import CORE_BANKING_GLOSSARY_KNOWLEDGE_BASE
     from .prompts import (
         get_conceptual_prompt,
         get_conceptual_update_prompt,
         get_logical_prompt,
         get_physical_prompt,
     )
-    from .rag import get_relevant_context
     from .schemas import ConceptualModel, ConceptualUpdatePatch, LogicalModel, PhysicalModel, PhysicalModelTemplate  #added by swamy
 
   
@@ -415,17 +415,17 @@ def _fallback_conceptual_model(requirement: str, context: str) -> Dict[str, Any]
     relationships = _extract_context_relationships(context, entities)
 
     return {
-        "title": "Conceptual Credit Risk Model",
-        "scope": "Business-level conceptual model grounded only in the retrieved glossary context.",
+        "title": "Conceptual Core Banking Model",
+        "scope": "Business-level conceptual model grounded only in the full core banking glossary context.",
         "requirement": requirement,
         "rag_context_used": context,
         "entities": entities,
         "relationships": relationships,
         "business_rules": [
-            "Only glossary-supported entities and relationships are included in this fallback conceptual model.",
+            "Only core banking glossary-supported entities and relationships are included in this fallback conceptual model.",
             "Cardinality inferred from glossary reference attributes should be reviewed and approved by the SME.",
         ],
-        "conceptual_summary": "This draft identifies business entities and high-level relationships using retrieved glossary context only.",
+        "conceptual_summary": "This draft identifies business entities and high-level relationships using the full core banking glossary context only.",
         "diagram_description": "ER diagram derived from glossary-grounded conceptual entities and inferred relationships.",
     }
 
@@ -859,18 +859,18 @@ def _generate_structured_json(prompt: str, system_message: str, schema: Any) -> 
     raise TypeError(f"Gemini structured output returned unsupported response type: {type(response).__name__}")
 
 
-def rag_context_core(requirement: str, k: int = 12) -> str:
-    return get_relevant_context(requirement, k=k)
+def core_banking_glossary_context() -> str:
+    return "\n".join(CORE_BANKING_GLOSSARY_KNOWLEDGE_BASE)
 
 
 def conceptual_model_core(requirement: str) -> Dict[str, Any]:
-    context = rag_context_core(requirement)
+    context = core_banking_glossary_context()
     prompt = get_conceptual_prompt(requirement, context)
     try:
         conceptual = ConceptualModel.model_validate(
             _generate_json(
                 prompt,
-                "You are a senior enterprise data architect specializing in conceptual data modeling. Use only the supplied glossary context as the source of truth and do not invent unsupported entities or relationships.",
+                "You are a senior enterprise data architect specializing in conceptual data modeling. Use only the supplied full core banking glossary context as the source of truth and do not invent unsupported entities or relationships.",
             )
         )
         if not conceptual.requirement:
@@ -932,12 +932,6 @@ def physical_model_core(logical_payload: Dict[str, Any]) -> Dict[str, Any]:
     except Exception as exc:
         logger.exception("Gemini physical generation failed; stopping workflow. Error: %s", exc)  #editd by mani
         raise
-
-
-@tool
-def rag_tool(requirement: str) -> str:
-    """Retrieve relevant business context for the requirement using RAG."""
-    return rag_context_core(requirement)
 
 
 @tool

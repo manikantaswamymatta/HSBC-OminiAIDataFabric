@@ -87,14 +87,15 @@ You are a banking domain expert and enterprise data architect.
 Business requirement:
 {requirement}
 
-Authoritative glossary context:
+Authoritative core banking glossary context (full one-shot source):
 {context}
 
 Return ONLY valid JSON for a conceptual model.
 
 Rules:
-- Use the glossary context as the source of truth.
-- Include only glossary-supported entities and relationships.
+- Use this full core banking glossary context as the only source of truth.
+- Do not use RAG, external banking knowledge, or unsupported loan-domain entities.
+- Include only core banking glossary-supported entities and relationships.
 - Stay strictly conceptual: no PK, FK, SQL, indexing, storage, or calculations.
 - Keep names business-friendly and prefer domain-specific names like Loan_Default over Default.
 - Use entity profiles and column hints only to understand business meaning, not to design technical schemas.

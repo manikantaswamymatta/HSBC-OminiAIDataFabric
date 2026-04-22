@@ -5,11 +5,11 @@ This folder contains an end-to-end AI data modeling workflow built for FastAPI S
 ## Architecture
 
 - `orchestrator.py`: stage-based router for conceptual, logical, and physical flows
-- `tools.py`: RAG retrieval and generation tools
+- `tools.py`: one-shot core banking glossary prompt context and generation tools
 - `prompts.py`: detailed prompts for each modeling stage
 - `schemas.py`: request and response contracts used by Swagger
 - `api.py`: FastAPI entry point
-- `rag.py`: vector retrieval plus local fallback
+- `rag.py`: legacy optional RAG helper, not used by the active API flow
 
 ## Recommended demo path
 
@@ -64,6 +64,6 @@ with the actual key before running against Gemini.
 
 ## Notes
 
-- If Gemini is unavailable, the app falls back to deterministic local outputs so the flow still demos cleanly.
+- Conceptual generation sends the full core banking glossary into the prompt as one-shot context instead of using RAG retrieval.
 - Conceptual modeling should use a structured output schema, not a physical database schema.
 - Mermaid is generated from the conceptual model structure using `utils/mermaid_builder.py`.

@@ -25,7 +25,6 @@ try:
         save_physical_artifact,
         update_conceptual_artifact,
     )
-    from rag import warm_rag
     from schemas import (
         ConceptualModel,
         EntityDefinition,
@@ -59,7 +58,6 @@ except ImportError:  # pragma: no cover - supports package-style imports
         save_physical_artifact,
         update_conceptual_artifact,
     )
-    from .rag import warm_rag
     from .schemas import (
         ConceptualModel,
         EntityDefinition,
@@ -87,12 +85,6 @@ app = FastAPI(
         "the orchestrator invokes the agent, and the agent decides which tools to use."
     ),
 )
-
-
-#editd by mani
-@app.on_event("startup")
-def _warm_rag_on_startup() -> None:
-    warm_rag()
 
 
 def _apply_generated_mermaid(conceptual: ConceptualModel) -> ConceptualModel:

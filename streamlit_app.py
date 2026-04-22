@@ -63,7 +63,7 @@ DATA_PRODUCTS = [
     "Dimensional Modeling",
 ]
 
-st.set_page_config(page_title="OmniModel.AI - AI Data Fabric Application", layout="wide")
+st.set_page_config(page_title="OmniModel.AI", layout="wide")
 
 def render_app_logo() -> None:
     if not LOGO_PATH.exists():
@@ -145,7 +145,7 @@ def render_app_logo() -> None:
         <div class="app-fixed-header-bg"></div>
         <div class="app-fixed-header">
             <img src="data:image/png;base64,{encoded_logo}" alt="KPMG logo" />
-            <h1 class="app-fixed-header-title">OmniModel.AI - AI Data Fabric Application</h1>
+            <h1 class="app-fixed-header-title">OmniModel.AI</h1>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1373,7 +1373,7 @@ def render_landing_page() -> None:
             st.button("Old Repo (0)", disabled=True, use_container_width=True)
 
     with docs_col:
-        if st.button("Docs", use_container_width=True):
+        if st.button("Data Catalog", use_container_width=True):
             st.session_state.landing_notice = "Docs placeholder: add your project documentation link here."
             st.rerun()
 

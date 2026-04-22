@@ -5,13 +5,13 @@ try:
     from langgraph.prebuilt import create_react_agent
 
     from config import get_gemini_api_key, get_gemini_model
-    from tools import conceptual_tool, logical_tool, physical_tool, rag_tool  #added by swamy
+    from tools import conceptual_tool, logical_tool, physical_tool  #added by swamy
 except ImportError:  # pragma: no cover
     from langchain_google_genai import ChatGoogleGenerativeAI
     from langgraph.prebuilt import create_react_agent
 
     from .config import get_gemini_api_key, get_gemini_model
-    from .tools import conceptual_tool, logical_tool, physical_tool, rag_tool  #added by swamy
+    from .tools import conceptual_tool, logical_tool, physical_tool  #added by swamy
 
 
 #editd by mani
@@ -28,7 +28,7 @@ gemini_kwargs["google_api_key"] = gemini_api_key
 
 llm = ChatGoogleGenerativeAI(**gemini_kwargs)
 
-tools = [rag_tool, conceptual_tool, logical_tool, physical_tool]  #added by swamy
+tools = [conceptual_tool, logical_tool, physical_tool]  #added by swamy
 
 system_prompt = """
 You are a banking domain expert and enterprise data modeling agent.
