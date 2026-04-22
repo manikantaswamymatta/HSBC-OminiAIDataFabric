@@ -13,3 +13,15 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
+  - type: web
+    name: hsbc-ominiai-frontend
+    runtime: python
+    plan: free
+    rootDir: frontend
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: BACKEND_API_URL
+        value: https://hsbc-ominiaidatafabric.onrender.com

@@ -43,7 +43,22 @@ BACKEND_API_URL = "https://your-render-service-name.onrender.com"
 
 Do not include a trailing slash.
 
-## 4. Local Development
+## 4. Deploy Frontend On Render
+
+If you deploy the Streamlit frontend on Render instead of Streamlit Cloud, create a separate Web Service with:
+
+- Root directory: `frontend`
+- Build command: `pip install -r requirements.txt`
+- Start command: `streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port $PORT`
+
+Environment variables:
+
+```env
+BACKEND_API_URL=https://hsbc-ominiaidatafabric.onrender.com
+PYTHON_VERSION=3.11.11
+```
+
+## 5. Local Development
 
 Start the backend locally:
 
@@ -59,7 +74,7 @@ streamlit run streamlit_app.py
 
 The frontend defaults to `http://127.0.0.1:8000` when `BACKEND_API_URL` is not set.
 
-## 5. Important Notes
+## 6. Important Notes
 
 - Render free services can sleep when idle, so the first frontend request may be slow.
 - The Streamlit app calls the backend server-side with Python `requests`, so browser CORS is not needed for the current frontend flow.
