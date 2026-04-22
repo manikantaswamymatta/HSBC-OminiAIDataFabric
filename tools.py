@@ -45,7 +45,7 @@ def _build_client():
     return ChatGoogleGenerativeAI(
         model=get_gemini_model(),
         google_api_key=api_key,
-        temperature=4,
+        temperature=1,
         max_retries=0,  #editd by mani
         timeout=30,  #editd by mani
     )

@@ -1634,37 +1634,6 @@ with st.sidebar:
         start_new_project()
         st.rerun()
 
-    project = read_project(st.session_state.current_project_id) if st.session_state.current_project_id else None
-    if project:
-        with st.expander("Project History"):
-            diagram_json = project.get("diagram_json", {})
-            saved_layers = [
-                layer_name.title()
-                for layer_name, layer_data in diagram_json.items()
-                if isinstance(layer_data, dict)
-                and layer_data.get("model_json") is not None
-            ]
-            if saved_layers:
-                st.caption(f"Saved JSON/Diagrams: {', '.join(saved_layers)}")
-
-            st.download_button(
-                "Download Project JSON",
-                data=json.dumps(project, indent=2, ensure_ascii=False),
-                file_name=f"{project.get('project_name', 'project').replace(' ', '_')}.json",
-                mime="application/json",
-                use_container_width=True,
-            )
-
-            if not project.get("chat_history"):
-                st.caption("No chat history saved yet.")
-
-            for item in project.get("chat_history", [])[-8:]:
-                role = item.get("role", "user").title()
-                action = item.get("action", "")
-                message = item.get("message", "")
-                st.caption(f"{role} | {action} | {item.get('timestamp', '')}")
-                st.write(message[:350] + ("..." if len(message) > 350 else ""))
-
 if selected_product == "Conceptual":
     st.header("Enter Business Requirement")
 

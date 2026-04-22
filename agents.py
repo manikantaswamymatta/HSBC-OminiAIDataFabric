@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover
 #editd by mani
 gemini_kwargs = {
     "model": get_gemini_model(),
-    "temperature": 4,
+    "temperature": 1,
     "max_retries": 0,  #editd by mani
     "timeout": 30,  #editd by mani
 }
