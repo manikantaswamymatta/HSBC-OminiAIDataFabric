@@ -32,8 +32,9 @@ uvicorn api:app --reload
 ## Deployment
 
 Use `render.yaml` to deploy the FastAPI backend on Render, then deploy
-`streamlit_app.py` on Streamlit Community Cloud with `BACKEND_API_URL` set to
-the Render service URL. See `DEPLOYMENT.md` for the full checklist.
+`frontend/streamlit_app.py` on Streamlit Community Cloud with
+`BACKEND_API_URL` set to the Render service URL. See `DEPLOYMENT.md` for the
+full checklist.
 
 Create a local `.env` file in the repository root:
 

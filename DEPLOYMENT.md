@@ -33,8 +33,8 @@ This repository includes `render.yaml`, so the easiest path is Render Blueprint 
 
 1. Open Streamlit Community Cloud and create a new app from this GitHub repo.
 2. Set the entrypoint file to:
-   - `streamlit_app.py`
-3. In Advanced settings, choose Python `3.11`.
+   - `frontend/streamlit_app.py`
+3. Keep the root directory unset.
 4. In Secrets, add:
 
 ```toml
@@ -64,4 +64,5 @@ The frontend defaults to `http://127.0.0.1:8000` when `BACKEND_API_URL` is not s
 - Render free services can sleep when idle, so the first frontend request may be slow.
 - The Streamlit app calls the backend server-side with Python `requests`, so browser CORS is not needed for the current frontend flow.
 - Keep all real credentials in Render environment variables or Streamlit secrets.
+- Streamlit Cloud should use `frontend/streamlit_app.py` as the app file. That lets it install only `frontend/requirements.txt` instead of the backend dependencies in the root `requirements.txt`.
 - If Render logs show `Using Python version 3.14.3 (default)` and `pydantic-core` fails to build, the Python pin was not applied. Confirm `.python-version` is pushed to GitHub or set `PYTHON_VERSION=3.11.11` in the Render service environment variables, then clear the build cache and redeploy.
