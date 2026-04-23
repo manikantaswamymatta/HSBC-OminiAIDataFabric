@@ -56,17 +56,10 @@ Environment variables:
 ```env
 BACKEND_API_URL=https://hsbc-ominiaidatafabric.onrender.com
 PYTHON_VERSION=3.11.11
-PROJECT_REPOSITORY_DIR=/var/data/project_repository
 ```
 
-For history to survive Render deploys and restarts, attach a persistent disk to
-the frontend service:
-
-- Disk mount path: `/var/data`
-- Size: `1 GB` or the smallest Render allows
-
-Without a persistent disk, Render's local filesystem is ephemeral. History might
-appear during a running instance but can disappear after redeploys or restarts.
+For this POC, project history is saved through the backend API into the backend
+service's local `project_repository/history.json` file.
 
 ## 5. Local Development
 
@@ -87,7 +80,7 @@ The frontend defaults to `http://127.0.0.1:8000` when `BACKEND_API_URL` is not s
 ## 6. Important Notes
 
 - Render free services can sleep when idle, so the first frontend request may be slow.
-- Render services have an ephemeral filesystem unless you attach a persistent disk. The frontend history file is stored under `PROJECT_REPOSITORY_DIR`.
+- Render free services use an ephemeral filesystem. The POC history API saves to backend-local JSON, so history can still reset if the backend service redeploys or restarts.
 - The Streamlit app calls the backend server-side with Python `requests`, so browser CORS is not needed for the current frontend flow.
 - Keep all real credentials in Render environment variables or Streamlit secrets.
 - Streamlit Cloud should use `frontend/streamlit_app.py` as the app file. That lets it install only `frontend/requirements.txt` instead of the backend dependencies in the root `requirements.txt`.

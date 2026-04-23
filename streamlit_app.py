@@ -960,6 +960,10 @@ def normalize_project_for_history(project: dict) -> bool:
 
 
 def read_project_store() -> dict:
+    backend_store = read_backend_project_store()
+    if backend_store is not None:
+        return backend_store
+
     ensure_project_repository()
     projects = []
     known_project_ids = set()
@@ -1027,6 +1031,9 @@ def read_project_store() -> dict:
 
 
 def write_project_store(store: dict) -> None:
+    if write_backend_project_store(store) is not None:
+        return
+
     ensure_project_repository()
     store["updated_at"] = current_timestamp()
     PROJECT_STORE_FILE.write_text(
@@ -1036,6 +1043,10 @@ def write_project_store(store: dict) -> None:
 
 
 def read_project(project_id: str) -> dict | None:
+    backend_project = read_backend_project(project_id)
+    if backend_project is not None:
+        return backend_project
+
     store = read_project_store()
     for project in store.get("projects", []):
         if project.get("project_id") == project_id:
@@ -1060,6 +1071,9 @@ def read_project(project_id: str) -> dict | None:
 
 def write_project(project: dict) -> None:
     normalize_project_for_history(project)
+    if write_backend_project(project) is not None:
+        return
+
     store = read_project_store()
     projects = store.setdefault("projects", [])
     project_written = False
@@ -1459,6 +1473,47 @@ def api_post(payload: dict, action_label: str) -> requests.Response:
     except Exception as exc:  # pragma: no cover - UI-only safeguard
         st.error(str(exc))
         st.stop()
+
+
+def backend_history_request(
+    method: str,
+    path: str,
+    payload: dict | None = None,
+) -> dict | None:
+    try:
+        response = requests.request(
+            method,
+            f"{API}{path}",
+            json=payload,
+            timeout=30,
+        )
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        data = response.json()
+    except Exception:
+        return None
+
+    return data if isinstance(data, dict) else None
+
+
+def read_backend_project_store() -> dict | None:
+    return backend_history_request("GET", "/projects/store")
+
+
+def write_backend_project_store(store: dict) -> dict | None:
+    return backend_history_request("PUT", "/projects/store", store)
+
+
+def read_backend_project(project_id: str) -> dict | None:
+    return backend_history_request("GET", f"/projects/{project_id}")
+
+
+def write_backend_project(project: dict) -> dict | None:
+    project_id = project.get("project_id")
+    if not project_id:
+        return None
+    return backend_history_request("PUT", f"/projects/{project_id}", project)
 
 
 #editd by mani

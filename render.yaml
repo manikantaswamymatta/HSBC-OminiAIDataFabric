@@ -25,5 +25,3 @@ services:
         value: 3.11.11
       - key: BACKEND_API_URL
         value: https://hsbc-ominiaidatafabric.onrender.com
-      - key: PROJECT_REPOSITORY_DIR
-        value: /var/data/project_repository

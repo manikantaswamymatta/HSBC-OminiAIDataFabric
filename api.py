@@ -25,6 +25,12 @@ try:
         save_physical_artifact,
         update_conceptual_artifact,
     )
+    from project_history_store import (
+        read_project,
+        read_project_store,
+        write_project,
+        write_project_store,
+    )
     from schemas import (
         ConceptualModel,
         EntityDefinition,
@@ -57,6 +63,12 @@ except ImportError:  # pragma: no cover - supports package-style imports
         save_logical_artifact,
         save_physical_artifact,
         update_conceptual_artifact,
+    )
+    from .project_history_store import (
+        read_project,
+        read_project_store,
+        write_project,
+        write_project_store,
     )
     from .schemas import (
         ConceptualModel,
@@ -366,6 +378,31 @@ def _build_orchestrator_response(
 @app.get("/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/projects/store")
+def get_projects_store() -> dict:
+    return read_project_store()
+
+
+@app.put("/projects/store")
+def put_projects_store(store: dict) -> dict:
+    return write_project_store(store)
+
+
+@app.get("/projects/{project_id}")
+def get_project(project_id: str) -> dict:
+    project = read_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
+
+
+@app.put("/projects/{project_id}")
+def put_project(project_id: str, project: dict) -> dict:
+    project = dict(project)
+    project["project_id"] = project_id
+    return write_project(project)
 
 
 @app.post("/orchestrate", response_model=OrchestratorResponse)
