@@ -14,8 +14,8 @@ import streamlit as st
 
 from frontend_history_client import BackendHistoryClient
 
-# DEFAULT_BACKEND_API_URL = "https://hsbc-ominiaidatafabric.onrender.com"
-DEFAULT_BACKEND_API_URL = "http://127.0.0.1:8000"
+DEFAULT_BACKEND_API_URL = "https://hsbc-ominiaidatafabric.onrender.com"
+# DEFAULT_BACKEND_API_URL = "http://127.0.0.1:8000"
 DEFAULT_PROJECT_REPOSITORY_PATH = Path(__file__).with_name("project_repository")
 
 
