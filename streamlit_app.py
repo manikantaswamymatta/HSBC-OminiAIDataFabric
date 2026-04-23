@@ -13,6 +13,7 @@ import requests
 import streamlit as st
 
 DEFAULT_BACKEND_API_URL = "https://hsbc-ominiaidatafabric.onrender.com"
+DEFAULT_PROJECT_REPOSITORY_PATH = Path(__file__).with_name("project_repository")
 
 
 def get_backend_api_url() -> str:
@@ -26,7 +27,9 @@ def get_backend_api_url() -> str:
 
 LOGO_PATH = Path(__file__).with_name("kpmg-logo-png_seeklogo-290229.png")
 EXAMPLE_IMAGE_PATH = Path(__file__).with_name("example.jpeg")
-PROJECT_REPOSITORY_PATH = Path(__file__).with_name("project_repository")
+PROJECT_REPOSITORY_PATH = Path(
+    os.getenv("PROJECT_REPOSITORY_DIR", str(DEFAULT_PROJECT_REPOSITORY_PATH))
+)
 PROJECT_STORE_FILE = PROJECT_REPOSITORY_PATH / "history.json"
 LEGACY_PROJECT_STORE_FILE = PROJECT_REPOSITORY_PATH / "projects.json"
 USE_CASE_REQUIREMENTS = {
