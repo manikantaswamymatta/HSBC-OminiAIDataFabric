@@ -12,6 +12,8 @@ import zipfile
 import requests
 import streamlit as st
 
+from frontend_history_client import BackendHistoryClient
+
 DEFAULT_BACKEND_API_URL = "https://hsbc-ominiaidatafabric.onrender.com"
 DEFAULT_PROJECT_REPOSITORY_PATH = Path(__file__).with_name("project_repository")
 
@@ -79,6 +81,7 @@ DATA_PRODUCTS = [
 st.set_page_config(page_title="OmniModel.AI", layout="wide")
 
 API = get_backend_api_url()
+HISTORY_CLIENT = BackendHistoryClient(API)
 
 def render_app_logo() -> None:
     if not LOGO_PATH.exists():
@@ -1475,45 +1478,20 @@ def api_post(payload: dict, action_label: str) -> requests.Response:
         st.stop()
 
 
-def backend_history_request(
-    method: str,
-    path: str,
-    payload: dict | None = None,
-) -> dict | None:
-    try:
-        response = requests.request(
-            method,
-            f"{API}{path}",
-            json=payload,
-            timeout=30,
-        )
-        if response.status_code == 404:
-            return None
-        response.raise_for_status()
-        data = response.json()
-    except Exception:
-        return None
-
-    return data if isinstance(data, dict) else None
-
-
 def read_backend_project_store() -> dict | None:
-    return backend_history_request("GET", "/projects/store")
+    return HISTORY_CLIENT.get_store()
 
 
 def write_backend_project_store(store: dict) -> dict | None:
-    return backend_history_request("PUT", "/projects/store", store)
+    return HISTORY_CLIENT.put_store(store)
 
 
 def read_backend_project(project_id: str) -> dict | None:
-    return backend_history_request("GET", f"/projects/{project_id}")
+    return HISTORY_CLIENT.get_project(project_id)
 
 
 def write_backend_project(project: dict) -> dict | None:
-    project_id = project.get("project_id")
-    if not project_id:
-        return None
-    return backend_history_request("PUT", f"/projects/{project_id}", project)
+    return HISTORY_CLIENT.put_project(project)
 
 
 #editd by mani

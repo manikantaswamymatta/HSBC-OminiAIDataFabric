@@ -11,6 +11,8 @@ This folder contains an end-to-end AI data modeling workflow built for FastAPI S
 - `api.py`: FastAPI entry point
 - `rag.py`: legacy optional RAG helper, not used by the active API flow
 
+For a more junior-friendly walkthrough of the codebase, see `ARCHITECTURE.md`.
+
 ## Recommended demo path
 
 Use Swagger at `http://127.0.0.1:8000/docs` and call:

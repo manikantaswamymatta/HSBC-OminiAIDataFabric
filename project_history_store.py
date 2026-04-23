@@ -43,6 +43,7 @@ def _normalize_project(project: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def read_project_store() -> Dict[str, Any]:
+    """Read the full history file, returning an empty store when it is missing."""
     _ensure_project_repository()
     if not PROJECT_STORE_FILE.exists():
         return {"version": 2, "updated_at": _current_timestamp(), "projects": []}
@@ -72,6 +73,7 @@ def read_project_store() -> Dict[str, Any]:
 
 
 def write_project_store(store: Dict[str, Any]) -> Dict[str, Any]:
+    """Replace the full history file and return the normalized store."""
     _ensure_project_repository()
     projects = store.get("projects") if isinstance(store, dict) else []
     if not isinstance(projects, list):
@@ -94,6 +96,7 @@ def write_project_store(store: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def read_project(project_id: str) -> Dict[str, Any] | None:
+    """Return one project by id from the history store."""
     store = read_project_store()
     for project in store.get("projects", []):
         if project.get("project_id") == project_id:
@@ -102,6 +105,7 @@ def read_project(project_id: str) -> Dict[str, Any] | None:
 
 
 def write_project(project: Dict[str, Any]) -> Dict[str, Any]:
+    """Create or update one project in the history store."""
     normalized_project = _normalize_project(dict(project))
     store = read_project_store()
     projects = store.setdefault("projects", [])
