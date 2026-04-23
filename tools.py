@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import logging
-logger = logging.getLogger(__name__)
-
 import json
 import re
 from typing import Any, Dict, List
@@ -11,7 +8,7 @@ from langchain_core.tools import tool
 
 try:
     from langchain_google_genai import ChatGoogleGenerativeAI
-except ImportError:
+except ImportError:  # pragma: no cover
     ChatGoogleGenerativeAI = None
 
 try:
@@ -21,9 +18,8 @@ try:
         get_conceptual_prompt,
         get_conceptual_update_prompt,
         get_logical_prompt,
-        get_physical_prompt,
     )
-    from schemas import ConceptualModel, ConceptualUpdatePatch, LogicalModel, PhysicalModel, PhysicalModelTemplate  #added by swamy
+    from schemas import ConceptualModel, ConceptualUpdatePatch, LogicalModel
 except ImportError:  # pragma: no cover
     from .config import get_gemini_api_key, get_gemini_model
     from .core_banking_glossary_knowledge_base import CORE_BANKING_GLOSSARY_KNOWLEDGE_BASE
@@ -31,23 +27,21 @@ except ImportError:  # pragma: no cover
         get_conceptual_prompt,
         get_conceptual_update_prompt,
         get_logical_prompt,
-        get_physical_prompt,
     )
-    from .schemas import ConceptualModel, ConceptualUpdatePatch, LogicalModel, PhysicalModel, PhysicalModelTemplate  #added by swamy
-
-  
+    from .schemas import ConceptualModel, ConceptualUpdatePatch, LogicalModel
 
 
-def _build_client():
+def _client():
     api_key = get_gemini_api_key()
     if not api_key or ChatGoogleGenerativeAI is None:
-        return None
+        raise RuntimeError("Gemini client is not configured.")
+
     return ChatGoogleGenerativeAI(
         model=get_gemini_model(),
         google_api_key=api_key,
         temperature=1,
-        max_retries=0,  #editd by mani
-        timeout=30,  #editd by mani
+        max_retries=0,
+        timeout=30,
     )
 
 
@@ -66,974 +60,269 @@ def extract_json_from_tool_output(text: str) -> Dict[str, Any]:
     return _extract_json(text)
 
 
-#editd by mani
-def _is_canonical_entity_name(entity_name: str) -> bool:
-    return bool(re.fullmatch(r"[A-Z][A-Z0-9_]*", entity_name))
-
-
-#editd by mani
-def _business_name_from_canonical(entity_name: str) -> str:
-    return entity_name.replace("_", " ").title()
-
-
-#editd by mani
-def _extract_context_entities(context: str) -> List[Dict[str, Any]]:
-    entities_by_canonical: Dict[str, Dict[str, Any]] = {}
-
-    for line in context.splitlines():
-        line = line.strip()
-        if not line.startswith("Business concept:"):
-            continue
-
-        match = re.match(
-            r"Business concept:\s*(?P<term>[^.]+)\.\s*"
-            r"(?:Canonical ER entity|Canonical table):\s*(?P<entity>[^.]+)\.\s*"
-            r"Definition:\s*(?P<definition>.+?)\.\s*"
-            r"(?:Business usage|Business purpose):",
-            line,
-        )
-        if not match:
-            continue
-
-        canonical_entity = match.group("entity").strip()
-        if not _is_canonical_entity_name(canonical_entity):
-            continue
-
-        entities_by_canonical[canonical_entity] = {
-            "name": match.group("term").strip(),
-            "description": match.group("definition").strip(),
-            "attributes": [],
-        }
-
-    for line in context.splitlines():
-        line = line.strip()
-        if not line.startswith("Entity profile:"):
-            continue
-
-        match = re.match(
-            r"Entity profile:\s*(?P<entity>[A-Z0-9_]+)\.\s*"
-            r"(?:Business terms:\s*(?P<terms>[^.]+)\.\s*)?",
-            line,
-        )
-        if not match:
-            continue
-
-        canonical_entity = match.group("entity").strip()
-        if not _is_canonical_entity_name(canonical_entity):
-            continue
-
-        entity = entities_by_canonical.setdefault(
-            canonical_entity,
-            {
-                "name": _business_name_from_canonical(canonical_entity),
-                "description": f"Business entity grounded in glossary context for {canonical_entity}.",
-                "attributes": [],
-            },
-        )
-
-        terms = (match.group("terms") or "").strip()
-        if terms and entity["name"] == _business_name_from_canonical(canonical_entity):
-            entity["name"] = terms.split(",")[0].strip()
-
-    for line in context.splitlines():
-        line = line.strip()
-        if not line.startswith("Table summary:"):
-            continue
-
-        match = re.match(
-            r"Table summary:\s*(?P<entity>[A-Z0-9_]+)\s+represents\s+(?P<term>[^.]+)\.\s*",
-            line,
-        )
-        if not match:
-            continue
-
-        canonical_entity = match.group("entity").strip()
-        if not _is_canonical_entity_name(canonical_entity):
-            continue
-
-        definition_match = re.search(
-            r"Business attributes:\s*(?P<attributes>.+?)\.\s*(?:Examples:|$)",
-            line,
-        )
-        attributes = []
-        if definition_match:
-            for attribute_part in definition_match.group("attributes").split(";"):
-                attribute_name = attribute_part.strip().split(" means ", 1)[0].strip()
-                if attribute_name:
-                    attributes.append(attribute_name)
-
-        entities_by_canonical.setdefault(
-            canonical_entity,
-            {
-                "name": match.group("term").strip(),
-                "description": f"Business entity represented by {canonical_entity} in glossary context.",
-                "attributes": attributes,
-            },
-        )
-
-    return list(entities_by_canonical.values())
-
-
-#editd by mani
-def _extract_context_relationships(context: str, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    business_name_by_canonical = {
-        entity["name"].upper().replace(" ", "_"): entity["name"]
-        for entity in entities
-    }
-    relationships_by_key: Dict[tuple[str, str], Dict[str, Any]] = {}
-
-    for line in context.splitlines():
-        line = line.strip()
-        if not line.startswith("Entity profile:"):
-            continue
-
-        entity_match = re.match(r"Entity profile:\s*(?P<entity>[A-Z0-9_]+)\.", line)
-        if not entity_match:
-            continue
-
-        child_canonical = entity_match.group("entity").strip()
-        child_name = business_name_by_canonical.get(child_canonical)
-        if not child_name:
-            continue
-
-        reference_match = re.search(
-            r"Identifiers and reference attributes:\s*(?P<references>.+?)\.\s*"
-            r"(?:Typical business attributes:|Notes and examples:|$)",
-            line,
-        )
-        if not reference_match:
-            continue
-
-        reference_text = reference_match.group("references")
-        for reference_part in reference_text.split(";"):
-            attribute_name = reference_part.strip().split(" means ", 1)[0].strip()
-            if not attribute_name.endswith("_id"):
-                continue
-
-            parent_canonical = attribute_name[:-3].upper()
-            if parent_canonical == child_canonical:
-                continue
-
-            parent_name = business_name_by_canonical.get(parent_canonical)
-            if not parent_name:
-                continue
-
-            relationship_key = (parent_name, child_name)
-            if relationship_key in relationships_by_key:
-                continue
-
-            relationships_by_key[relationship_key] = {
-                "from_entity": parent_name,
-                "to_entity": child_name,
-                "cardinality": "1:N",
-                "description": f"One {parent_name} can be associated with many {child_name} records based on glossary reference attributes.",
-                "label": "relates to",
-            }
-
-    for line in context.splitlines():
-        line = line.strip()
-        if not line.startswith("Relationship rule:"):
-            continue
-
-        match = re.match(
-            r"Relationship rule:\s*(?P<from_entity>[A-Z0-9_]+)\s+to\s+(?P<to_entity>[A-Z0-9_]+)\.\s*"
-            r"Cardinality:\s*(?P<cardinality>[^.]+)\.\s*"
-            r"Business rule:\s*(?P<description>.+)",
-            line,
-        )
-        if not match:
-            continue
-
-        from_entity = business_name_by_canonical.get(match.group("from_entity").strip(), _business_name_from_canonical(match.group("from_entity").strip()))
-        to_entity = business_name_by_canonical.get(match.group("to_entity").strip(), _business_name_from_canonical(match.group("to_entity").strip()))
-        cardinality = match.group("cardinality").strip().replace("1:M", "1:N")
-        relationship_key = (from_entity, to_entity)
-        relationships_by_key[relationship_key] = {
-            "from_entity": from_entity,
-            "to_entity": to_entity,
-            "cardinality": cardinality,
-            "description": match.group("description").strip(),
-            "label": "relates to",
-        }
-
-    return list(relationships_by_key.values())
-
-
-#editd by mani
-def _normalized_entity_key(entity_name: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", entity_name.lower())
-
-
-#editd by mani
-def _relationship_exists(
-    relationships: List[Dict[str, Any]],
-    from_entity: str,
-    to_entity: str,
-) -> bool:
-    target_pair = {
-        _normalized_entity_key(from_entity),
-        _normalized_entity_key(to_entity),
-    }
-    for relationship in relationships:
-        relationship_pair = {
-            _normalized_entity_key(relationship.get("from_entity", "")),
-            _normalized_entity_key(relationship.get("to_entity", "")),
-        }
-        if relationship_pair == target_pair:
-            return True
-    return False
-
-
-#editd by mani
-def _conceptual_entity_degrees(
-    entities: List[Dict[str, Any]],
-    relationships: List[Dict[str, Any]],
-) -> Dict[str, int]:
-    degrees = {
-        _normalized_entity_key(entity.get("name", "")): 0
-        for entity in entities
-    }
-    for relationship in relationships:
-        from_key = _normalized_entity_key(relationship.get("from_entity", ""))
-        to_key = _normalized_entity_key(relationship.get("to_entity", ""))
-        if from_key in degrees:
-            degrees[from_key] += 1
-        if to_key in degrees:
-            degrees[to_key] += 1
-    return degrees
-
-
-#editd by mani
-def _preferred_connection_target(
-    orphan_entity_name: str,
-    entities: List[Dict[str, Any]],
-    relationships: List[Dict[str, Any]],
-) -> str | None:
-    orphan_key = _normalized_entity_key(orphan_entity_name)
-    degrees = _conceptual_entity_degrees(entities, relationships)
-    preferred_names = ["Customer", "Facility", "Loan", "Account", "Loan Account"]
-
-    for preferred_name in preferred_names:
-        for entity in entities:
-            entity_name = entity.get("name", "")
-            if _normalized_entity_key(entity_name) == orphan_key:
-                continue
-            if _normalized_entity_key(entity_name) == _normalized_entity_key(preferred_name):
-                return entity_name
-
-    connected_entities = [
-        entity.get("name", "")
-        for entity in entities
-        if _normalized_entity_key(entity.get("name", "")) != orphan_key
-        and degrees.get(_normalized_entity_key(entity.get("name", "")), 0) > 0
-    ]
-    if connected_entities:
-        return connected_entities[0]
-
-    for entity in entities:
-        entity_name = entity.get("name", "")
-        if _normalized_entity_key(entity_name) != orphan_key:
-            return entity_name
-    return None
-
-
-#editd by mani
-def ensure_connected_conceptual_model(
-    conceptual_output: Dict[str, Any],
-    context: str = "",
-) -> Dict[str, Any]:
-    entities = list(conceptual_output.get("entities", []))
-    relationships = [dict(relationship) for relationship in conceptual_output.get("relationships", [])]
-
-    if len(entities) <= 1:
-        normalized_output = dict(conceptual_output)
-        normalized_output["relationships"] = relationships
-        return normalized_output
-
-    inferred_relationships = _extract_context_relationships(context, entities) if context else []
-
-    while True:
-        degrees = _conceptual_entity_degrees(entities, relationships)
-        orphan_entities = [
-            entity for entity in entities
-            if degrees.get(_normalized_entity_key(entity.get("name", "")), 0) == 0
-        ]
-        if not orphan_entities:
-            break
-
-        added_relationship = False
-        for orphan_entity in orphan_entities:
-            orphan_name = orphan_entity.get("name", "")
-
-            for inferred_relationship in inferred_relationships:
-                inferred_from = inferred_relationship.get("from_entity", "")
-                inferred_to = inferred_relationship.get("to_entity", "")
-                if _normalized_entity_key(orphan_name) not in {
-                    _normalized_entity_key(inferred_from),
-                    _normalized_entity_key(inferred_to),
-                }:
-                    continue
-                if _relationship_exists(relationships, inferred_from, inferred_to):
-                    continue
-                relationships.append(inferred_relationship)
-                added_relationship = True
-                break
-
-            if added_relationship:
-                break
-
-            target_entity = _preferred_connection_target(orphan_name, entities, relationships)
-            if not target_entity or _relationship_exists(relationships, target_entity, orphan_name):
-                continue
-
-            relationships.append(
-                {
-                    "from_entity": target_entity,
-                    "to_entity": orphan_name,
-                    "cardinality": "1:N" if _normalized_entity_key(target_entity) in {
-                        _normalized_entity_key("Customer"),
-                        _normalized_entity_key("Facility"),
-                        _normalized_entity_key("Loan"),
-                    } else "M:N",
-                    "description": f"{target_entity} is associated with {orphan_name} in the conceptual business model.",
-                    "label": "relates to",
-                }
-            )
-            added_relationship = True
-            break
-
-        if not added_relationship:
-            break
-
-    normalized_output = dict(conceptual_output)
-    normalized_output["relationships"] = relationships
-    return normalized_output
-
-
-def _fallback_conceptual_model(requirement: str, context: str) -> Dict[str, Any]:
-    entities = _extract_context_entities(context)
-    relationships = _extract_context_relationships(context, entities)
-
-    return {
-        "title": "Conceptual Core Banking Model",
-        "scope": "Business-level conceptual model grounded only in the full core banking glossary context.",
-        "requirement": requirement,
-        "rag_context_used": context,
-        "entities": entities,
-        "relationships": relationships,
-        "business_rules": [
-            "Only core banking glossary-supported entities and relationships are included in this fallback conceptual model.",
-            "Cardinality inferred from glossary reference attributes should be reviewed and approved by the SME.",
-        ],
-        "conceptual_summary": "This draft identifies business entities and high-level relationships using the full core banking glossary context only.",
-        "diagram_description": "ER diagram derived from glossary-grounded conceptual entities and inferred relationships.",
-    }
-
-
-#editd by mani
-def _title_case_entity_name(entity_name: str) -> str:
-    parts = re.split(r"[_\s]+", entity_name.strip())
-    return "_".join(part.capitalize() for part in parts if part)
-
-
-#editd by mani
-def _fallback_conceptual_update_patch(
-    conceptual_output: Dict[str, Any],
-    instruction: str,
-) -> Dict[str, Any]:
-    existing_entities = conceptual_output.get("entities", [])
-    normalized_entity_lookup = {
-        re.sub(r"[^a-z0-9]", "", entity.get("name", "").lower()): entity.get("name", "")
-        for entity in existing_entities
-    }
-    instruction_text = instruction.lower()
-    entity_mentions = []
-
-    for entity in existing_entities:
-        entity_name = entity.get("name", "")
-        aliases = {
-            entity_name.lower(),
-            entity_name.lower().replace("_", " "),
-            entity_name.lower().replace(" ", "_"),
-        }
-        positions = [
-            instruction_text.find(alias.replace("_", " "))
-            for alias in aliases
-            if instruction_text.find(alias.replace("_", " ")) >= 0
-        ]
-        for position in positions:
-            entity_mentions.append((position, entity_name, False))
-
-    for match in re.finditer(r"new\s+(?:table|entity)\s+([a-zA-Z][a-zA-Z0-9_ ]+)", instruction, re.IGNORECASE):
-        raw_name = match.group(1).strip()
-        raw_name = re.split(r"\s+(?:which|that|and|with)\b", raw_name, maxsplit=1)[0].strip(" ,.")
-        normalized_name = re.sub(r"[^a-z0-9]", "", raw_name.lower())
-        if normalized_name and normalized_name not in normalized_entity_lookup:
-            entity_mentions.append((match.start(1), _title_case_entity_name(raw_name), True))
-
-    entity_mentions.sort(key=lambda item: item[0])
-    entities_to_add = []
-    relationships_to_add_or_update = []
-    ordered_entities = [entity_name for _, entity_name, _ in entity_mentions]
-
-    seen_new_entities = set()
-    for _, entity_name, is_new in entity_mentions:
-        if is_new and entity_name not in seen_new_entities:
-            seen_new_entities.add(entity_name)
-            entities_to_add.append(
-                {
-                    "name": entity_name,
-                    "description": f"Business entity added from conceptual update instruction for {entity_name}.",
-                    "attributes": [],
-                }
-            )
-
-    for left_entity, right_entity in zip(ordered_entities, ordered_entities[1:]):
-        if left_entity == right_entity:
-            continue
-        relationships_to_add_or_update.append(
-            {
-                "from_entity": left_entity,
-                "to_entity": right_entity,
-                "cardinality": "M:N",
-                "description": f"{left_entity} is directly related to {right_entity} at the conceptual business level.",
-                "label": "relates to",
-            }
-        )
-
-    return {
-        "entities_to_add": entities_to_add,
-        "relationships_to_add_or_update": relationships_to_add_or_update,
-    }
-
-
-def _fallback_logical_model(conceptual_output: Dict[str, Any]) -> Dict[str, Any]:
-    entities = conceptual_output.get("entities", [])
-    relationships = conceptual_output.get("relationships", [])
-    tables = []
-
-    for entity in entities:
-        entity_name = entity["name"]
-        table_name = f"{entity_name.lower()}s"
-        pk_name = f"{entity_name.lower()}_id"
-        columns = [
-            {"name": pk_name, "type": "INTEGER", "nullable": False},
-            {"name": "name", "type": "VARCHAR(255)", "nullable": False},
-        ]
-        tables.append(
-            {
-                "table_name": table_name,
-                "source_entity": entity_name,
-                "columns": columns,
-                "primary_key": [pk_name],
-                "foreign_keys": [],
-            }
-        )
-
-    for relationship in relationships:
-        parent = relationship["from_entity"].lower()
-        child = relationship["to_entity"].lower()
-        parent_table = f"{parent}s"
-        child_table = f"{child}s"
-        fk_name = f"{parent}_id"
-        for table in tables:
-            if table["table_name"] == child_table:
-                if not any(column["name"] == fk_name for column in table["columns"]):
-                    table["columns"].append(
-                        {"name": fk_name, "type": "INTEGER", "nullable": False}
-                    )
-                table["foreign_keys"].append(
-                    {
-                        "column": fk_name,
-                        "references_table": parent_table,
-                        "references_column": f"{parent}_id",
-                    }
-                )
-
-    return {
-        "source_entities": [entity["name"] for entity in entities],
-        "tables": tables,
-        "relationships": relationships,
-        "normalization_notes": [
-            "The draft is aligned to 3NF expectations pending SME confirmation of attributes.",
-            "Repeating groups should be split into separate child tables during detailed design.",
-        ],
-    }
-
-
-#added by swamy
-def _physical_name(name: str) -> str:
-    name = name.strip()
-    name = re.sub(r"\s+", "_", name)
-    name = re.sub(r"[^a-zA-Z0-9_]", "", name)
-    return name.lower()
-
-
-#added by swamy
-def _map_column_data_type(
-    logical_type: str,
-    is_primary_key: bool = False,
-    is_foreign_key: bool = False,
-) -> str:
-    type_text = (logical_type or "").lower()
-
-    if is_primary_key or is_foreign_key:
-        return "BIGINT"
-    if any(token in type_text for token in ["int", "number"]):
-        return "INTEGER"
-    if any(token in type_text for token in ["decimal", "numeric", "amount", "money"]):
-        return "DECIMAL(18,2)"
-    if "timestamp" in type_text or "datetime" in type_text:
-        return "TIMESTAMP"
-    if "date" in type_text:
-        return "DATE"
-    if "bool" in type_text:
-        return "BOOLEAN"
-    if "text" in type_text:
-        return "TEXT"
-    return "VARCHAR(255)"
-
-
-def _canonical_table_name(table_name: str) -> str:
-    normalized = re.sub(r"[^a-zA-Z0-9_]+", "_", table_name.strip())
-    normalized = re.sub(r"_+", "_", normalized).strip("_").upper()
-    while re.match(r"^(DIM|FACT|FCT)_", normalized):
-        normalized = re.sub(r"^(DIM|FACT|FCT)_+", "", normalized, count=1)
-    while re.search(r"_(DIM|FACT|FCT)$", normalized):
-        normalized = re.sub(r"_(DIM|FACT|FCT)$", "", normalized)
-    return normalized or table_name.strip().upper()
-
-
-def _table_name_map(tables: List[Dict[str, Any]]) -> Dict[str, str]:
-    return {
-        table.get("table_name", ""): _canonical_table_name(table.get("table_name", ""))
-        for table in tables
-        if table.get("table_name")
-    }
-
-
-def _normalize_physical_index(index: Dict[str, Any], table_name_map: Dict[str, str]) -> Dict[str, Any]:
-    canonical_table = table_name_map.get(
-        index.get("table_name", ""),
-        _canonical_table_name(index.get("table_name", "")),
-    )
-    normalized_columns = [
-        _canonical_table_name(column)
-        for column in index.get("columns", [])
-        if column
-    ]
-    index_suffix = "_".join(normalized_columns)
-    normalized_index_name = f"IDX_{canonical_table}_{index_suffix}" if index_suffix else f"IDX_{canonical_table}"
-    return {
-        **index,
-        "index_name": normalized_index_name,
-        "table_name": canonical_table,
-    }
-
-
-#editd by mani
-def _normalize_logical_identifier_types(logical_output: Dict[str, Any]) -> Dict[str, Any]:
-    normalized_tables = []
-    table_name_map = _table_name_map(logical_output.get("tables", []))
-
-    for table in logical_output.get("tables", []):
-        primary_keys = set(table.get("primary_key", []))
-        foreign_key_columns = {
-            foreign_key.get("column", "")
-            for foreign_key in table.get("foreign_keys", [])
-        }
-        normalized_columns = []
-
-        for column in table.get("columns", []):
-            normalized_column = dict(column)
-            column_name = normalized_column.get("name", "")
-            if column_name in primary_keys or column_name in foreign_key_columns:
-                normalized_column["type"] = "number"
-                normalized_column["nullable"] = False
-            normalized_columns.append(normalized_column)
-
-        normalized_table = dict(table)
-        normalized_table["table_name"] = table_name_map.get(
-            table.get("table_name", ""),
-            _canonical_table_name(table.get("table_name", "")),
-        )
-        normalized_table["foreign_keys"] = [
-            {
-                **foreign_key,
-                "references_table": table_name_map.get(
-                    foreign_key.get("references_table", ""),
-                    _canonical_table_name(foreign_key.get("references_table", "")),
-                ),
-            }
-            for foreign_key in table.get("foreign_keys", [])
-        ]
-        normalized_table["columns"] = normalized_columns
-        normalized_tables.append(normalized_table)
-
-    normalized_output = dict(logical_output)
-    normalized_output["tables"] = normalized_tables
-    return normalized_output
-
-
-#editd by mani
-def _rebuild_physical_ddl(physical_output: Dict[str, Any]) -> List[str]:
-    ddl = []
-
-    for table in physical_output.get("tables", []):
-        column_lines = []
-        for column in table.get("columns", []):
-            null_clause = "NULL" if column.get("nullable", True) else "NOT NULL"
-            column_lines.append(
-                f"  {column.get('name', '')} {column.get('column_data_type', 'VARCHAR(255)')} {null_clause}"
-            )
-
-        ddl.append(
-            _build_table_ddl(
-                table,
-                column_lines,
-                table.get("primary_key", []),
-                table.get("foreign_keys", []),
-            )
-        )
-
-    for index in physical_output.get("indexes", []):
-        ddl.append(
-            f"CREATE INDEX {index['index_name']} "
-            f"ON {index['table_name']} "
-            f"({', '.join(index['columns'])});"
-        )
-
-    return ddl
-
-
-#editd by mani
-def _normalize_physical_identifier_types(physical_output: Dict[str, Any]) -> Dict[str, Any]:
-    normalized_tables = []
-    table_name_map = _table_name_map(physical_output.get("tables", []))
-
-    for table in physical_output.get("tables", []):
-        primary_keys = set(table.get("primary_key", []))
-        foreign_key_columns = {
-            foreign_key.get("column", "")
-            for foreign_key in table.get("foreign_keys", [])
-        }
-        normalized_columns = []
-
-        for column in table.get("columns", []):
-            normalized_column = dict(column)
-            column_name = normalized_column.get("name", "")
-            if column_name in primary_keys or column_name in foreign_key_columns:
-                normalized_column["column_data_type"] = "BIGINT"
-                normalized_column["nullable"] = False
-            normalized_columns.append(normalized_column)
-
-        normalized_table = dict(table)
-        normalized_table["table_name"] = table_name_map.get(
-            table.get("table_name", ""),
-            _canonical_table_name(table.get("table_name", "")),
-        )
-        normalized_table["foreign_keys"] = [
-            {
-                **foreign_key,
-                "references_table": table_name_map.get(
-                    foreign_key.get("references_table", ""),
-                    _canonical_table_name(foreign_key.get("references_table", "")),
-                ),
-            }
-            for foreign_key in table.get("foreign_keys", [])
-        ]
-        normalized_table["indexes"] = [
-            _normalize_physical_index(index, table_name_map)
-            for index in table.get("indexes", [])
-        ]
-        normalized_table["columns"] = normalized_columns
-        normalized_tables.append(normalized_table)
-
-    normalized_output = dict(physical_output)
-    normalized_output["tables"] = normalized_tables
-    normalized_output["indexes"] = [
-        _normalize_physical_index(index, table_name_map)
-        for index in physical_output.get("indexes", [])
-    ]
-    normalized_output["ddl"] = _rebuild_physical_ddl(normalized_output)
-    return normalized_output
-
-
-#added by swamy
-def _build_table_ddl(
-    table: Dict[str, Any],
-    column_lines: List[str],
-    primary_key: List[str],
-    foreign_keys: List[Dict[str, Any]],
-) -> str:
-    constraints = []
-    table_name = table["table_name"]
-
-    if primary_key:
-        constraints.append(
-            f"  CONSTRAINT pk_{table_name} PRIMARY KEY ({', '.join(primary_key)})"
-        )
-
-    for foreign_key in foreign_keys:
-        column = foreign_key["column"]
-        references_table = foreign_key["references_table"]
-        references_column = foreign_key["references_column"]
-        constraints.append(
-            "  "
-            f"CONSTRAINT fk_{table_name}_{column} "
-            f"FOREIGN KEY ({column}) "
-            f"REFERENCES {references_table} ({references_column})"
-        )
-
-    ddl_lines = column_lines + constraints
-    return (
-        f"CREATE TABLE {table_name} (\n"
-        + ",\n".join(ddl_lines)
-        + "\n);"
-    )
-
-
-#added by swamy
-def _fallback_physical_model(logical_output: Dict[str, Any]) -> Dict[str, Any]:
-    tables = logical_output.get("tables", [])
-    table_name_map = {
-        table.get("table_name", ""): _physical_name(table.get("table_name", ""))
-        for table in tables
-    }
-    physical_tables = []
-    all_indexes = []
-    ddl = []
-
-    for table in tables:
-        logical_table_name = table.get("table_name", "")
-        physical_table_name = table_name_map.get(logical_table_name, _physical_name(logical_table_name))
-        primary_key = [_physical_name(column) for column in table.get("primary_key", [])]
-        logical_foreign_keys = table.get("foreign_keys", [])
-        foreign_key_columns = {
-            _physical_name(foreign_key.get("column", ""))
-            for foreign_key in logical_foreign_keys
-        }
-        physical_columns = []
-        column_lines = []
-
-        for column in table.get("columns", []):
-            column_name = _physical_name(column.get("name", ""))
-            is_primary_key = column_name in primary_key
-            is_foreign_key = column_name in foreign_key_columns
-            column_data_type = _map_column_data_type(
-                column.get("type", ""),
-                is_primary_key=is_primary_key,
-                is_foreign_key=is_foreign_key,
-            )
-            nullable = bool(column.get("nullable", True))
-            null_clause = "NULL" if nullable else "NOT NULL"
-            column_lines.append(f"  {column_name} {column_data_type} {null_clause}")
-            physical_columns.append(
-                {
-                    "name": column_name,
-                    "column_data_type": column_data_type,
-                    "nullable": nullable,
-                    "default": None,
-                    "source_logical_column": column.get("name", ""),
-                    "comment": "Mapped from logical model column.",
-                }
-            )
-
-        physical_foreign_keys = []
-        table_indexes = []
-        for foreign_key in logical_foreign_keys:
-            column_name = _physical_name(foreign_key.get("column", ""))
-            references_table = table_name_map.get(
-                foreign_key.get("references_table", ""),
-                _physical_name(foreign_key.get("references_table", "")),
-            )
-            references_column = _physical_name(foreign_key.get("references_column", ""))
-            physical_foreign_keys.append(
-                {
-                    "column": column_name,
-                    "references_table": references_table,
-                    "references_column": references_column,
-                }
-            )
-            index = {
-                "index_name": f"idx_{physical_table_name}_{column_name}",
-                "table_name": physical_table_name,
-                "columns": [column_name],
-                "unique": False,
-            }
-            table_indexes.append(index)
-            all_indexes.append(index)
-
-        physical_table = {
-            "table_name": physical_table_name,
-            "source_logical_table": logical_table_name,
-            "columns": physical_columns,
-            "primary_key": primary_key,
-            "foreign_keys": physical_foreign_keys,
-            "indexes": table_indexes,
-            "partitioning": "",
-            "storage_notes": [
-                "No partitioning is applied because workload and volume details were not provided."
-            ],
-        }
-        physical_tables.append(physical_table)
-        ddl.append(
-            _build_table_ddl(
-                physical_table,
-                column_lines,
-                primary_key,
-                physical_foreign_keys,
-            )
-        )
-
-    for index in all_indexes:
-        ddl.append(
-            f"CREATE INDEX {index['index_name']} "
-            f"ON {index['table_name']} "
-            f"({', '.join(index['columns'])});"
-        )
-
-    return {
-        "tables": physical_tables,
-        "indexes": all_indexes,
-        "ddl": ddl,
-    }
-
-
-def _generate_json(prompt: str, system_message: str) -> Dict[str, Any]:
-    client = _build_client()
-    if client is None:
-        raise RuntimeError("Gemini client is not configured.")
-
-    response = client.invoke(
-        [
-            ("system", system_message),
-            ("human", prompt),
-        ]
-    )
+def _ask_json(prompt: str, system_message: str) -> Dict[str, Any]:
+    response = _client().invoke([("system", system_message), ("human", prompt)])
     return _extract_json(response.content)
 
 
-#editd by mani
-def _generate_structured_json(prompt: str, system_message: str, schema: Any) -> Dict[str, Any]:
-    client = _build_client()
-    if client is None:
-        raise RuntimeError("Gemini client is not configured.")
-
-    structured_client = client.with_structured_output(schema)
-    response = structured_client.invoke(
-        [
-            ("system", system_message),
-            ("human", prompt),
-        ]
+def _ask_structured_json(prompt: str, system_message: str, schema: Any) -> Dict[str, Any]:
+    response = _client().with_structured_output(schema).invoke(
+        [("system", system_message), ("human", prompt)]
     )
     if hasattr(response, "model_dump"):
         return response.model_dump()
     if isinstance(response, dict):
         return response
-    raise TypeError(f"Gemini structured output returned unsupported response type: {type(response).__name__}")
+    raise TypeError(f"Unsupported structured response: {type(response).__name__}")
 
 
 def core_banking_glossary_context() -> str:
     return "\n".join(CORE_BANKING_GLOSSARY_KNOWLEDGE_BASE)
 
 
+def _name_key(name: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def _table_name(name: str) -> str:
+    name = re.sub(r"[^a-zA-Z0-9_]+", "_", name.strip())
+    name = re.sub(r"_+", "_", name).strip("_").upper()
+    name = re.sub(r"^(DIM|FACT|FCT)_+", "", name)
+    name = re.sub(r"_(DIM|FACT|FCT)$", "", name)
+    return name
+
+
+def _table_map(tables: List[Dict[str, Any]]) -> Dict[str, str]:
+    return {
+        table["table_name"]: _table_name(table["table_name"])
+        for table in tables
+        if table.get("table_name")
+    }
+
+
+def _id_columns(table: Dict[str, Any]) -> set[str]:
+    foreign_keys = table.get("foreign_keys", [])
+    return set(table.get("primary_key", [])) | {
+        foreign_key.get("column", "") for foreign_key in foreign_keys
+    }
+
+
+def ensure_connected_conceptual_model(
+    conceptual_output: Dict[str, Any],
+    context: str = "",
+) -> Dict[str, Any]:
+    entities = conceptual_output.get("entities", [])
+    relationships = [dict(item) for item in conceptual_output.get("relationships", [])]
+    entity_names = [item.get("name", "") for item in entities if item.get("name")]
+
+    if len(entity_names) <= 1:
+        return {**conceptual_output, "relationships": relationships}
+
+    connected = {
+        _name_key(name)
+        for relationship in relationships
+        for name in [relationship.get("from_entity", ""), relationship.get("to_entity", "")]
+        if name
+    }
+    anchor = next((name for name in entity_names if _name_key(name) in connected), entity_names[0])
+
+    for entity_name in entity_names:
+        if entity_name == anchor or _name_key(entity_name) in connected:
+            continue
+        relationships.append(
+            {
+                "from_entity": anchor,
+                "to_entity": entity_name,
+                "cardinality": "M:N",
+                "description": f"{anchor} is associated with {entity_name} in the conceptual business model.",
+                "label": "relates to",
+            }
+        )
+
+    return {**conceptual_output, "relationships": relationships}
+
+
+def _clean_logical(logical_output: Dict[str, Any]) -> Dict[str, Any]:
+    tables = logical_output.get("tables", [])
+    names = _table_map(tables)
+    cleaned_tables = []
+
+    for table in tables:
+        table = dict(table)
+        ids = _id_columns(table)
+        table["table_name"] = names.get(table.get("table_name", ""), table.get("table_name", ""))
+        table["columns"] = [
+            {
+                **column,
+                "type": "number" if column.get("name") in ids else column.get("type"),
+                "nullable": False if column.get("name") in ids else column.get("nullable", True),
+            }
+            for column in table.get("columns", [])
+        ]
+        table["foreign_keys"] = [
+            {
+                **foreign_key,
+                "references_table": names.get(
+                    foreign_key.get("references_table", ""),
+                    _table_name(foreign_key.get("references_table", "")),
+                ),
+            }
+            for foreign_key in table.get("foreign_keys", [])
+        ]
+        cleaned_tables.append(table)
+
+    return {**logical_output, "tables": cleaned_tables}
+
+
+def _physical_type(logical_type: str, is_id: bool) -> str:
+    text = (logical_type or "").lower()
+    if is_id:
+        return "BIGINT"
+    if any(item in text for item in ["decimal", "numeric", "amount", "money"]):
+        return "DECIMAL(18,2)"
+    if "date" in text and "time" in text:
+        return "TIMESTAMP"
+    if "date" in text:
+        return "DATE"
+    if "bool" in text:
+        return "BOOLEAN"
+    if "int" in text or "number" in text:
+        return "INTEGER"
+    if "text" in text:
+        return "TEXT"
+    return "VARCHAR(255)"
+
+
+def _ddl(table: Dict[str, Any]) -> str:
+    lines = []
+    for column in table.get("columns", []):
+        null_text = "NULL" if column.get("nullable", True) else "NOT NULL"
+        lines.append(f"  {column['name']} {column['column_data_type']} {null_text}")
+
+    if table.get("primary_key"):
+        lines.append(
+            f"  CONSTRAINT pk_{table['table_name']} PRIMARY KEY ({', '.join(table['primary_key'])})"
+        )
+
+    for foreign_key in table.get("foreign_keys", []):
+        lines.append(
+            f"  CONSTRAINT fk_{table['table_name']}_{foreign_key['column']} "
+            f"FOREIGN KEY ({foreign_key['column']}) "
+            f"REFERENCES {foreign_key['references_table']} ({foreign_key['references_column']})"
+        )
+
+    return f"CREATE TABLE {table['table_name']} (\n" + ",\n".join(lines) + "\n);"
+
+
+def _physical_from_logical(logical_output: Dict[str, Any]) -> Dict[str, Any]:
+    logical_output = _clean_logical(logical_output)
+    tables = []
+    indexes = []
+
+    for logical_table in logical_output.get("tables", []):
+        ids = _id_columns(logical_table)
+        table_name = _table_name(logical_table.get("table_name", ""))
+        columns = [
+            {
+                "name": column.get("name", ""),
+                "column_data_type": _physical_type(column.get("type", ""), column.get("name") in ids),
+                "nullable": False if column.get("name") in ids else column.get("nullable", True),
+            }
+            for column in logical_table.get("columns", [])
+        ]
+        foreign_keys = [
+            {
+                **foreign_key,
+                "references_table": _table_name(foreign_key.get("references_table", "")),
+            }
+            for foreign_key in logical_table.get("foreign_keys", [])
+        ]
+        table_indexes = [
+            {
+                "index_name": f"IDX_{table_name}_{foreign_key['column'].upper()}",
+                "table_name": table_name,
+                "columns": [foreign_key["column"]],
+                "unique": False,
+            }
+            for foreign_key in foreign_keys
+        ]
+
+        table = {
+            "table_name": table_name,
+            "columns": columns,
+            "primary_key": logical_table.get("primary_key", []),
+            "foreign_keys": foreign_keys,
+            "indexes": table_indexes,
+        }
+        tables.append(table)
+        indexes.extend(table_indexes)
+
+    return {
+        "tables": tables,
+        "indexes": indexes,
+        "ddl": [_ddl(table) for table in tables]
+        + [
+            f"CREATE INDEX {index['index_name']} ON {index['table_name']} ({', '.join(index['columns'])});"
+            for index in indexes
+        ],
+    }
+
+
 def conceptual_model_core(requirement: str) -> Dict[str, Any]:
     context = core_banking_glossary_context()
     prompt = get_conceptual_prompt(requirement, context)
-    try:
-        conceptual = ConceptualModel.model_validate(
-            _generate_json(
-                prompt,
-                "You are a senior enterprise data architect specializing in conceptual data modeling. Use only the supplied full core banking glossary context as the source of truth and do not invent unsupported entities or relationships.",
-            )
-        )
-        if not conceptual.requirement:
-            conceptual.requirement = requirement
-        if not conceptual.rag_context_used:
-            conceptual.rag_context_used = context
-        return ensure_connected_conceptual_model(conceptual.model_dump(), context)
-    except Exception as exc:
-        logger.exception("Gemini conceptual generation failed; stopping workflow. Error: %s", exc)  #editd by mani
-        raise
+    output = _ask_json(
+        prompt,
+        "You are a senior enterprise data architect. Use only the supplied core banking glossary.",
+    )
+    conceptual = ConceptualModel.model_validate(output)
+    if not conceptual.requirement:
+        conceptual.requirement = requirement
+    if not conceptual.rag_context_used:
+        conceptual.rag_context_used = context
+    return ensure_connected_conceptual_model(conceptual.model_dump())
 
 
-#editd by mani
 def conceptual_update_patch_core(
     conceptual_payload: Dict[str, Any],
     instruction: str,
 ) -> Dict[str, Any]:
     prompt = get_conceptual_update_prompt(conceptual_payload, instruction)
-    try:
-        patch = ConceptualUpdatePatch.model_validate(
-            _generate_structured_json(
-                prompt,
-                "You are a senior enterprise data architect specializing in conceptual model change requests. Return only a minimal JSON patch for the requested conceptual update.",
-                ConceptualUpdatePatch,
-            )
-        )
-        return patch.model_dump()
-    except Exception as exc:
-        logger.exception("Gemini conceptual update failed; stopping workflow. Error: %s", exc)  #editd by mani
-        raise
+    output = _ask_structured_json(
+        prompt,
+        "Return a minimal conceptual model JSON patch for the user's update request.",
+        ConceptualUpdatePatch,
+    )
+    return ConceptualUpdatePatch.model_validate(output).model_dump()
 
 
 def logical_model_core(conceptual_payload: Dict[str, Any]) -> Dict[str, Any]:
-    prompt = get_logical_prompt(conceptual_payload)
-    try:
-        logical = LogicalModel.model_validate(
-            _generate_json(
-                prompt,
-                "You are a senior data modeler specializing in logical data modeling.",
-            )
-        )
-        return _normalize_logical_identifier_types(logical.model_dump())
-    except Exception as exc:
-        logger.exception("Gemini logical generation failed; stopping workflow. Error: %s", exc)  #editd by mani
-        raise
+    output = _ask_json(
+        get_logical_prompt(conceptual_payload),
+        "You are a senior data modeler creating a logical data model.",
+    )
+    return _clean_logical(LogicalModel.model_validate(output).model_dump())
 
 
-#added by swamy
 def physical_model_core(logical_payload: Dict[str, Any]) -> Dict[str, Any]:
-    logical_payload = _normalize_logical_identifier_types(logical_payload)
-    prompt = get_physical_prompt(logical_payload)
-    try:
-        physical = PhysicalModel.model_validate(
-            _generate_json(
-                prompt,
-                "You are a senior physical data modeler specializing in DDL artifact generation.",
-            )
-        )
-        return _normalize_physical_identifier_types(physical.model_dump())
-    except Exception as exc:
-        logger.exception("Gemini physical generation failed; stopping workflow. Error: %s", exc)  #editd by mani
-        raise
+    return _physical_from_logical(logical_payload)
 
 
 @tool
 def conceptual_tool(requirement: str) -> str:
-    """Generate the conceptual model JSON from the business requirement."""
-    logger.info("TOOL CALLED: conceptual_tool")
-    conceptual = conceptual_model_core(requirement)
-    #return conceptual
-    return f"CONCEPTUAL_MODEL_JSON:\n{json.dumps(conceptual, indent=2)}"
-    
+    """Generate conceptual model JSON from a business requirement."""
+    return f"CONCEPTUAL_MODEL_JSON:\n{json.dumps(conceptual_model_core(requirement), indent=2)}"
+
 
 @tool
 def logical_tool(conceptual_json: str) -> str:
-    """Generate the logical model JSON from the conceptual model JSON."""
-    logger.info("TOOL CALLED: logical_tool")
+    """Generate logical model JSON from conceptual model JSON."""
     conceptual_payload = extract_json_from_tool_output(conceptual_json)
-    logical = logical_model_core(conceptual_payload)
-    #return logical
-    return f"LOGICAL_MODEL_JSON:\n{json.dumps(logical, indent=2)}"
-    
+    return f"LOGICAL_MODEL_JSON:\n{json.dumps(logical_model_core(conceptual_payload), indent=2)}"
 
-#added by swamy
+
 @tool
 def physical_tool(logical_json: str) -> str:
-    """Generate the physical model JSON and DDL from the logical model JSON."""
-    logger.info("TOOL CALLED: physical_tool")
+    """Generate physical model JSON and DDL from logical model JSON."""
     logical_payload = extract_json_from_tool_output(logical_json)
-    physical = physical_model_core(logical_payload)
-    return f"PHYSICAL_MODEL_JSON:\n{json.dumps(physical, indent=2)}"
+    return f"PHYSICAL_MODEL_JSON:\n{json.dumps(physical_model_core(logical_payload), indent=2)}"
