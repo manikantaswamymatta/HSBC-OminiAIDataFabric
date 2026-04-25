@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -9,9 +8,8 @@ from uuid import uuid4
 
 
 DEFAULT_PROJECT_REPOSITORY_PATH = Path(__file__).with_name("project_repository")
-PROJECT_REPOSITORY_PATH = Path(
-    os.getenv("PROJECT_REPOSITORY_DIR", str(DEFAULT_PROJECT_REPOSITORY_PATH))
-)
+# POC mode: always use the app-local folder and ignore old Render disk env vars.
+PROJECT_REPOSITORY_PATH = DEFAULT_PROJECT_REPOSITORY_PATH
 PROJECT_STORE_FILE = PROJECT_REPOSITORY_PATH / "history.json"
 
 

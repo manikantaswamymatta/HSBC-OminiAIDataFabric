@@ -58,6 +58,9 @@ BACKEND_API_URL=https://hsbc-ominiaidatafabric.onrender.com
 PYTHON_VERSION=3.11.11
 ```
 
+Do not set `PROJECT_REPOSITORY_DIR` for this POC. If it already exists in
+Render from an older disk-based setup, remove it before redeploying.
+
 For this POC, project history is saved through the backend API into the backend
 service's local `project_repository/history.json` file.
 

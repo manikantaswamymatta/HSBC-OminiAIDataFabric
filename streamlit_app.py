@@ -30,9 +30,8 @@ def get_backend_api_url() -> str:
 
 LOGO_PATH = Path(__file__).with_name("kpmg-logo-png_seeklogo-290229.png")
 EXAMPLE_IMAGE_PATH = Path(__file__).with_name("example.jpeg")
-PROJECT_REPOSITORY_PATH = Path(
-    os.getenv("PROJECT_REPOSITORY_DIR", str(DEFAULT_PROJECT_REPOSITORY_PATH))
-)
+# POC mode: always use the app-local folder and ignore old Render disk env vars.
+PROJECT_REPOSITORY_PATH = DEFAULT_PROJECT_REPOSITORY_PATH
 PROJECT_STORE_FILE = PROJECT_REPOSITORY_PATH / "history.json"
 LEGACY_PROJECT_STORE_FILE = PROJECT_REPOSITORY_PATH / "projects.json"
 USE_CASE_REQUIREMENTS = {
